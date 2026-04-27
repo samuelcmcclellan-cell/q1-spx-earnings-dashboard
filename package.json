@@ -1,0 +1,14 @@
+{
+  "name": "q1-spx-earnings-factset-dashboard",
+  "version": "1.0.0",
+  "description": "Weekly Q1 2026 S&P 500 earnings dashboard sourced from FactSet Earnings Insight PDFs",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "update": "node src/update.mjs"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "pdf-parse": "^2.1.7"
+  }
+}

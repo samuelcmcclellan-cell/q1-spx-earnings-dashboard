@@ -1,0 +1,408 @@
+{
+  "meta": {
+    "asOfDate": "April 17, 2026",
+    "quarter": "Q1 2026",
+    "sourcePdf": "EarningsInsight_041726.pdf",
+    "parsedAt": "2026-04-27T04:47:08.838Z",
+    "pageCount": 34
+  },
+  "keyMetrics": {
+    "pctReported": 10,
+    "pctBeatEps": 88,
+    "pctBeatRevenue": 84,
+    "blendedEarningsGrowth": 13.2,
+    "blendedRevenueGrowth": 9.9,
+    "negativeGuidanceCount": 4,
+    "positiveGuidanceCount": 3,
+    "fwdPe": 20.9,
+    "fwdPe5yr": 19.9,
+    "fwdPe10yr": 18.9
+  },
+  "scorecard": {
+    "epsBeat": {
+      "current": 88,
+      "avg1yr": 79,
+      "avg5yr": 78,
+      "avg10yr": 76
+    },
+    "epsSurprise": {
+      "current": 10.8,
+      "avg1yr": 7.2,
+      "avg5yr": 7.3,
+      "avg10yr": 7.1
+    },
+    "revenueBeat": {
+      "current": 84,
+      "avg1yr": 73,
+      "avg5yr": 70,
+      "avg10yr": 67
+    },
+    "revenueSurprise": {
+      "current": 2,
+      "avg1yr": 1.6,
+      "avg5yr": 2,
+      "avg10yr": 1.5
+    }
+  },
+  "sectorMatrix": [
+    {
+      "sector": "Communication Services",
+      "epsBeatPct": null,
+      "revBeatPct": null,
+      "epsSurprise": 61.2,
+      "revSurprise": null,
+      "earningsGrowth": -0.7,
+      "revenueGrowth": null,
+      "netProfitMargin": 14.1,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": 16
+    },
+    {
+      "sector": "Consumer Discretionary",
+      "epsBeatPct": null,
+      "revBeatPct": 60,
+      "epsSurprise": null,
+      "revSurprise": null,
+      "earningsGrowth": null,
+      "revenueGrowth": null,
+      "netProfitMargin": null,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": null
+    },
+    {
+      "sector": "Consumer Staples",
+      "epsBeatPct": 67,
+      "revBeatPct": null,
+      "epsSurprise": null,
+      "revSurprise": null,
+      "earningsGrowth": null,
+      "revenueGrowth": null,
+      "netProfitMargin": null,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": null
+    },
+    {
+      "sector": "Energy",
+      "epsBeatPct": null,
+      "revBeatPct": null,
+      "epsSurprise": null,
+      "revSurprise": null,
+      "earningsGrowth": null,
+      "revenueGrowth": null,
+      "netProfitMargin": 6.8,
+      "netProfitMargin5yr": 9.7,
+      "netProfitMarginYearAgo": null
+    },
+    {
+      "sector": "Financials",
+      "epsBeatPct": null,
+      "revBeatPct": null,
+      "epsSurprise": 7.8,
+      "revSurprise": null,
+      "earningsGrowth": 19.7,
+      "revenueGrowth": 10.8,
+      "netProfitMargin": null,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": null
+    },
+    {
+      "sector": "Health Care",
+      "epsBeatPct": null,
+      "revBeatPct": null,
+      "epsSurprise": null,
+      "revSurprise": null,
+      "earningsGrowth": -10.3,
+      "revenueGrowth": null,
+      "netProfitMargin": null,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": null
+    },
+    {
+      "sector": "Industrials",
+      "epsBeatPct": 67,
+      "revBeatPct": null,
+      "epsSurprise": 10.9,
+      "revSurprise": null,
+      "earningsGrowth": null,
+      "revenueGrowth": null,
+      "netProfitMargin": null,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": null
+    },
+    {
+      "sector": "Information Technology",
+      "epsBeatPct": null,
+      "revBeatPct": null,
+      "epsSurprise": 19.4,
+      "revSurprise": 7.2,
+      "earningsGrowth": 45.1,
+      "revenueGrowth": 27.5,
+      "netProfitMargin": 28.9,
+      "netProfitMargin5yr": 25,
+      "netProfitMarginYearAgo": 25.4
+    },
+    {
+      "sector": "Materials",
+      "epsBeatPct": null,
+      "revBeatPct": null,
+      "epsSurprise": null,
+      "revSurprise": null,
+      "earningsGrowth": 21.6,
+      "revenueGrowth": null,
+      "netProfitMargin": null,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": null
+    },
+    {
+      "sector": "Real Estate",
+      "epsBeatPct": null,
+      "revBeatPct": null,
+      "epsSurprise": null,
+      "revSurprise": null,
+      "earningsGrowth": null,
+      "revenueGrowth": null,
+      "netProfitMargin": null,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": null
+    },
+    {
+      "sector": "Utilities",
+      "epsBeatPct": null,
+      "revBeatPct": null,
+      "epsSurprise": null,
+      "revSurprise": null,
+      "earningsGrowth": null,
+      "revenueGrowth": null,
+      "netProfitMargin": null,
+      "netProfitMargin5yr": null,
+      "netProfitMarginYearAgo": null
+    }
+  ],
+  "sectorIndustries": {},
+  "companyContributors": {
+    "Energy": {
+      "companies": [
+        {
+          "company": "Exxon Mobil",
+          "actual": 1.07,
+          "estimate": 1.76
+        }
+      ],
+      "exContributor": {
+        "excluding": [
+          "Exxon Mobil"
+        ],
+        "adjustedGrowth": -0.5,
+        "fullGrowth": -13.1
+      }
+    },
+    "Health Care": {
+      "companies": [
+        {
+          "company": "Merck & Company",
+          "actual": -1.47,
+          "estimate": 2.22
+        }
+      ],
+      "exContributor": null
+    },
+    "Information Technology": {
+      "companies": [],
+      "exContributor": {
+        "excluding": [],
+        "adjustedGrowth": 20.3,
+        "fullGrowth": 45.1
+      }
+    },
+    "Materials": {
+      "companies": [],
+      "exContributor": {
+        "excluding": [],
+        "adjustedGrowth": 1.5,
+        "fullGrowth": 21.6
+      }
+    },
+    "Utilities": {
+      "companies": [
+        {
+          "company": "Vistra Corp.",
+          "actual": 1.28,
+          "estimate": -0.92
+        }
+      ],
+      "exContributor": {
+        "excluding": [
+          "Vistra Corp."
+        ],
+        "adjustedGrowth": 5.8,
+        "fullGrowth": 10.1
+      }
+    }
+  },
+  "marketReaction": {
+    "positiveSurprise": {
+      "current": -0.2,
+      "avg5yr": 1
+    },
+    "negativeSurprise": {
+      "current": -1.5,
+      "avg5yr": -2.9
+    }
+  },
+  "revisions": {
+    "earningsGrowth": {
+      "current": 13.2,
+      "lastWeek": 12.2,
+      "endOfQuarter": 13.2
+    },
+    "revenueGrowth": {
+      "current": 9.9,
+      "lastWeek": 9.8,
+      "endOfQuarter": 9.8
+    },
+    "sectorSinceQuarterEnd": [
+      {
+        "sector": "Communication Services",
+        "current": -0.7,
+        "endOfQuarter": -3.7
+      },
+      {
+        "sector": "Energy",
+        "current": -13.1,
+        "endOfQuarter": 8.5
+      },
+      {
+        "sector": "Financials",
+        "current": 19.7,
+        "endOfQuarter": 15
+      },
+      {
+        "sector": "Health Care",
+        "current": -10.5,
+        "endOfQuarter": -8.6
+      }
+    ]
+  },
+  "forwardEstimates": {
+    "CY_2026": {
+      "earningsGrowth": 18,
+      "revenueGrowth": 9.2
+    },
+    "Q2_2026": {
+      "earningsGrowth": 20.1,
+      "revenueGrowth": 10.3
+    },
+    "Q3_2026": {
+      "earningsGrowth": 22.2,
+      "revenueGrowth": 9.2
+    },
+    "Q4_2026": {
+      "earningsGrowth": 19.9,
+      "revenueGrowth": 8.8
+    }
+  },
+  "guidance": {
+    "nextQuarter": {
+      "label": "Q2 2026",
+      "total": 7,
+      "negative": 4,
+      "positive": 3,
+      "negPct": 57,
+      "negPct5yr": 58,
+      "negPct10yr": 60
+    },
+    "fullYear": null
+  },
+  "valuation": {
+    "fwdPe": {
+      "current": 20.9,
+      "avg5yr": 19.9,
+      "avg10yr": 18.9,
+      "endOfQuarter": 19.7
+    },
+    "trailingPe": {
+      "current": 27.8,
+      "avg5yr": 24.7,
+      "avg10yr": 23.2
+    },
+    "sectorFwdPe": [
+      {
+        "sector": "Consumer Discretionary",
+        "fwdPe": 28.2
+      },
+      {
+        "sector": "Energy",
+        "fwdPe": 14.9
+      },
+      {
+        "sector": "Financials",
+        "fwdPe": 15
+      },
+      {
+        "sector": "Industrials",
+        "fwdPe": 25.8
+      }
+    ]
+  },
+  "targets": {
+    "bottomUpTarget": 8325.6,
+    "upsidePct": 18.2,
+    "currentPrice": 7041.28,
+    "sectorUpside": [
+      {
+        "sector": "Health Care",
+        "upsidePct": 22.8
+      },
+      {
+        "sector": "Information Technology",
+        "upsidePct": 23.4
+      },
+      {
+        "sector": "Real Estate",
+        "upsidePct": 8.2
+      },
+      {
+        "sector": "Utilities",
+        "upsidePct": 10.8
+      }
+    ]
+  },
+  "ratings": {
+    "totalRatings": 12896,
+    "buyPct": 58.5,
+    "holdPct": 36.2,
+    "sellPct": 5.3,
+    "sectorBuyPct": [
+      {
+        "sector": "Communication Services",
+        "buyPct": 65
+      },
+      {
+        "sector": "Consumer Staples",
+        "buyPct": 43
+      },
+      {
+        "sector": "Health Care",
+        "buyPct": 63
+      },
+      {
+        "sector": "Information Technology",
+        "buyPct": 68
+      },
+      {
+        "sector": "Utilities",
+        "buyPct": 48
+      }
+    ]
+  },
+  "netProfitMargin": {
+    "current": 13.2,
+    "previousQuarter": 13.2,
+    "yearAgo": 12.8,
+    "avg5yr": 12.2
+  },
+  "nextWeek": {
+    "companiesReporting": 93,
+    "dow30Components": 7
+  }
+}

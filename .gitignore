@@ -1,0 +1,30 @@
+# Node
+node_modules/
+npm-debug.log*
+.npm
+
+# Build outputs
+web/.next/
+web/out/
+
+# Generated artifacts (regenerated each week)
+web/lib/data.js
+web/public/Q1_2026_Earnings_Dashboard.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Env
+.env*
+!.env.example
+
+# Vercel
+.vercel
+
+# Claude Code local state
+.claude/
