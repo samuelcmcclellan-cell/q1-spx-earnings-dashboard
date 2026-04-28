@@ -22,27 +22,6 @@ import fs from 'node:fs';
 import { createWorker, PSM } from 'tesseract.js';
 import { createCanvas } from '@napi-rs/canvas';
 
-// FactSet uses abbreviated sector labels in charts. Map them to our schema names.
-const SECTOR_ALIASES = {
-  'information technology': 'Information Technology',
-  'info. technology': 'Information Technology',
-  'info technology': 'Information Technology',
-  'communication services': 'Communication Services',
-  'comm. services': 'Communication Services',
-  'comm services': 'Communication Services',
-  'consumer discretionary': 'Consumer Discretionary',
-  'consumer disc.': 'Consumer Discretionary',
-  'consumer disc': 'Consumer Discretionary',
-  'consumer staples': 'Consumer Staples',
-  'health care': 'Health Care',
-  'real estate': 'Real Estate',
-  'financials': 'Financials',
-  'industrials': 'Industrials',
-  'materials': 'Materials',
-  'utilities': 'Utilities',
-  'energy': 'Energy',
-};
-
 const ALL_SECTORS = [
   'Communication Services', 'Consumer Discretionary', 'Consumer Staples',
   'Energy', 'Financials', 'Health Care', 'Industrials',
@@ -61,8 +40,10 @@ const ALL_SECTORS = [
 // OCR sometimes loses the decimal point (e.g. "33.2%" → "332%"); we recover
 // by dividing values that exceed the bound by 10.
 const CHART_TARGETS = [
+  { pageRange: [13, 18], kind: 'epsBeatPct',      layout: 'verticalTable', titleKeywords: ['Earnings', 'Below', 'Estimates'], valueBound: 100, currentRowKeywords: ['Above'] },
+  { pageRange: [13, 18], kind: 'revBeatPct',      layout: 'verticalTable', titleKeywords: ['Revenues', 'Below', 'Estimates'], valueBound: 100, currentRowKeywords: ['Above'] },
   { pageRange: [14, 19], kind: 'epsSurprise',     layout: 'horizontal',    titleKeywords: ['Earnings', 'Surprise'], valueBound: 100 },
-  { pageRange: [14, 19], kind: 'revSurprise',     layout: 'horizontal',    titleKeywords: ['Revenue', 'Surprise'],  valueBound: 20 },
+  { pageRange: [14, 19], kind: 'revSurprise',     layout: 'horizontal',    titleKeywords: ['Revenue', 'Surprise'],  valueBound: 10 },
   { pageRange: [18, 22], kind: 'earningsGrowth',  layout: 'verticalTable', titleKeywords: ['Earnings', 'Growth'],   valueBound: 100, currentRowKeywords: ['Today'] },
   { pageRange: [18, 22], kind: 'revenueGrowth',   layout: 'verticalTable', titleKeywords: ['Revenue', 'Growth'],    valueBound: 100, currentRowKeywords: ['Today'] },
   { pageRange: [20, 24], kind: 'netProfitMargin', layout: 'verticalTable', titleKeywords: ['S&P', 'Margins'],       valueBound: 60,  currentRowKeywords: ['Q126'] },
@@ -70,10 +51,30 @@ const CHART_TARGETS = [
 
 // ---- helpers --------------------------------------------------------------
 
-const normSector = (raw) => SECTOR_ALIASES[raw.toLowerCase().trim()] ?? null;
-
 const isNumericPct = (s) => /^-?\d+(\.\d+)?%$/.test(s);
 const numericValue = (s) => parseFloat(s.replace(/%/g, ''));
+
+// Tesseract sometimes confuses similar-looking glyphs in numeric strings:
+// "T" for "7", "I"/"l" for "1", "O" for "0", "B" for "8", "Z" for "2".
+// If a word ends in % and looks ALMOST numeric, attempt the substitutions and
+// keep the result only when it parses cleanly. Conservative — leaves true
+// non-numeric words ("S&P", "FACTSET") untouched because they don't end in %.
+function coerceNumericPct(text) {
+  if (isNumericPct(text)) return text;
+  if (!text.endsWith('%')) return text;
+  let fixed = text;
+  for (const [from, to] of [['T', '7'], ['l', '1'], ['I', '1'], ['O', '0'], ['B', '8'], ['Z', '2']]) {
+    fixed = fixed.split(from).join(to);
+  }
+  return isNumericPct(fixed) ? fixed : text;
+}
+
+// Distance under which a chart value is treated as the S&P 500 aggregate bar
+// rather than a sector. 0.15 covers display-rounding artifacts (chart and
+// aggregate are both shown to 1 decimal) while still admitting nearby sector
+// values — Real Estate's 2.3% revenue surprise is comfortably outside the
+// aggregate's 2.0%, for example.
+const AGGREGATE_TOLERANCE = 0.15;
 
 // OCR sometimes drops the decimal point (e.g. "33.2%" → "332%"). For each chart
 // kind we know a plausible upper bound; values exceeding it are very likely
@@ -126,35 +127,131 @@ function mergeSplitNumbers(words) {
 // Horizontal bar chart: each row has [sector label, ...optional axis tick..., value%].
 // Group rows by Y, then within each row the rightmost numeric word is the value.
 // Restrict to words that fall within the chart's vertical extent.
-function extractHorizontalBars(words, target) {
-  // 1. Locate the chart by finding its title — words on the same Y matching all title keywords.
+//
+// Three passes:
+//   1. Match each row by its left-side sector label.
+//   2. For rows whose label OCR'd unrecognizably, fall back to value-based
+//      cross-reference: if the row's value matches exactly one narrative
+//      sector value (within ±0.15), assign to that sector.
+//   3. For rows whose label matched but the value OCR'd as garble (e.g.
+//      "BB", "REED" for small/negative bars), re-OCR the value cell at
+//      higher resolution via `recovery.ocrRegion`.
+//
+// Values matching the S&P 500 aggregate (e.g. blended +12.3% surprise) are
+// dropped — that's the index-level row, not a sector.
+async function extractHorizontalBars(words, target, recovery, pageNum) {
   const titleY = findTitleY(words, target.titleKeywords);
   if (titleY == null) return {};
 
-  // 2. Find the next chart's title (or page footer) to bound this chart.
   const nextBoundary = findNextChartBoundary(words, titleY);
-
-  // 3. Filter words to this chart's vertical band.
   const chartWords = words.filter((w) => cy(w) > titleY + 30 && cy(w) < nextBoundary);
-
-  // 4. Group by Y row.
   const rows = groupByY(chartWords, 12);
 
-  // 5. For each row, look for a sector label (left side) and a value (right side).
   const result = {};
+  const usedSectors = new Set();
+  const aggregate = target._aggregate;
+  const unmatched = [];
+  const labeledRowsMissingValue = []; // rows whose label matched but value didn't parse
+
   for (const row of rows) {
     const sorted = [...row].sort((a, b) => cx(a) - cx(b));
-    // Try to assemble a sector name from the leftmost 1-3 words.
-    const sector = matchLeftSectorLabel(sorted);
-    if (!sector) continue;
-    // Value: rightmost numeric word.
     const valueWord = [...sorted].reverse().find((w) => isNumericPct(w.text));
-    if (!valueWord) continue;
+    const sector = matchLeftSectorLabel(sorted);
+    // Detect the S&P 500 aggregate row by its label so we drop it without
+    // relying on a value-tolerance match (which fires false positives when
+    // a sector bar happens to equal the index value).
+    const isAggregateRow = sorted.slice(0, 4).some((w) => /^(S&?P|500)$/i.test(stripPunct(w.text)));
+    if (isAggregateRow) continue;
+
+    if (!valueWord) {
+      if (sector && !usedSectors.has(sector)) labeledRowsMissingValue.push({ sector, row: sorted });
+      continue;
+    }
     const v = correctValue(numericValue(valueWord.text), target.valueBound);
-    if (v == null) continue;
-    result[sector] = v;
+    if (v == null) {
+      if (sector && !usedSectors.has(sector)) labeledRowsMissingValue.push({ sector, row: sorted });
+      continue;
+    }
+
+    if (sector && !usedSectors.has(sector)) {
+      // Trust the label match — don't apply the value-tolerance aggregate
+      // filter here, since the label uniquely identifies the row as a sector
+      // (e.g. Industrials revSurprise=2.0 happens to equal the index 2.0).
+      result[sector] = v;
+      usedSectors.add(sector);
+    } else if (!sector) {
+      // Without a label match, fall back to value-based aggregate filtering.
+      if (aggregate != null && Math.abs(v - aggregate) < AGGREGATE_TOLERANCE) continue;
+      unmatched.push(v);
+    }
   }
+
+  if (target._narrative) {
+    for (const v of unmatched) {
+      const matches = Object.entries(target._narrative)
+        .filter(([s, nv]) => nv != null && !usedSectors.has(s) && Math.abs(nv - v) < 0.15);
+      if (matches.length === 1) {
+        result[matches[0][0]] = v;
+        usedSectors.add(matches[0][0]);
+      }
+    }
+  }
+
+  // Recovery pass — re-OCR value cells for labeled rows whose value didn't
+  // parse at scale 5. The bar chart values for small numbers tend to render
+  // as 1–2 thin glyphs that scale-5 OCR mistakes for letter-shaped garble
+  // ("BB", "REED"); rendering at 8x usually resolves them cleanly.
+  if (recovery) {
+    if (target._debug) {
+      console.error(`[debug] ${target.kind}: labeledRowsMissingValue count=${labeledRowsMissingValue.length}`);
+      for (const { sector, row } of labeledRowsMissingValue) {
+        const yAvg = row.reduce((s, w) => s + cy(w), 0) / row.length;
+        console.error(`[debug]   ${sector} yAvg=${yAvg.toFixed(0)}`);
+      }
+    }
+    for (const { sector, row } of labeledRowsMissingValue) {
+      if (result[sector] != null) continue;
+      const yAvg = row.reduce((s, w) => s + cy(w), 0) / row.length;
+      const v = await recoverHorizontalValue(recovery, pageNum, yAvg, target);
+      if (target._debug) console.error(`[debug] recovery ${sector} y=${yAvg.toFixed(0)} → ${v}`);
+      if (v == null) continue;
+      // Label-matched rows bypass the aggregate-tolerance filter — see note
+      // in the main loop. Trust the label.
+      result[sector] = v;
+      usedSectors.add(sector);
+    }
+  }
+
   return result;
+}
+
+// Recover a missing value for a horizontal-bar row by re-OCRing the right
+// half of the row at higher resolution. The data column on FactSet's
+// surprise charts spans roughly x=1500–1900 in scale-5 coords.
+async function recoverHorizontalValue(recovery, pageNum, yCenter5, target) {
+  // Snap to integer scale-5 coords so the scale-8 crop lands on a deterministic
+  // pixel boundary. Sub-pixel offsets in yMin (from drawImage's float-source
+  // sampling) shifted glyph rows enough to break OCR for tight numeric crops.
+  const yc = Math.round(yCenter5);
+  const { text } = await recovery.ocrRegion(pageNum, 1500, 1900, yc - 28, yc + 28, { numeric: true });
+  return parseNumericFromText(text, target.valueBound);
+}
+
+// Pull the first plausible numeric percent out of a recovered text snippet.
+// Tesseract sometimes wraps numbers in punctuation ("| 1.9%", "“82%") so we
+// strip noise before parsing. Returns null if no number fits within bound.
+function parseNumericFromText(text, valueBound) {
+  if (!text) return null;
+  const cleaned = text.replace(/[^\d.\-%]/g, ' ');
+  const matches = cleaned.match(/-?\d+(?:\.\d+)?%?/g);
+  if (!matches) return null;
+  for (const tok of matches) {
+    const fixed = coerceNumericPct(tok.endsWith('%') ? tok : tok + '%');
+    if (!isNumericPct(fixed)) continue;
+    const v = correctValue(numericValue(fixed), valueBound);
+    if (v != null) return v;
+  }
+  return null;
 }
 
 // Vertical bar chart with data table: a current-period row of values aligned
@@ -162,7 +259,7 @@ function extractHorizontalBars(words, target) {
 // "Info." / "Technology" stacked). We anchor on the current row label,
 // grab all numeric values on its row, then match each value's X to the
 // closest sector header X.
-function extractVerticalTable(words, target) {
+async function extractVerticalTable(words, target, recovery, pageNum) {
   const titleY = findTitleY(words, target.titleKeywords);
   if (titleY == null) {
     if (target._debug) console.error(`[debug] no title found for ${target.kind}, keywords=${target.titleKeywords}`);
@@ -203,10 +300,14 @@ function extractVerticalTable(words, target) {
   }
   if (rowValues.length === 0) return {};
 
-  // 3. Find header row words ABOVE the anchor (within ~130px) that aren't axis labels.
+  // 3. Find header row words ABOVE the anchor (within ~160px) that aren't axis labels.
   //    The header row contains sector names — possibly wrapped to 2 visual rows.
+  //    Page 16's stacked-bar charts put two intermediate stack rows ("Below"
+  //    and "In-Line") between the header and the "Above" anchor, pushing the
+  //    upper header row to ~150px above; the wider window picks it up while
+  //    page 20/22 still find their tighter headers within the same band.
   const headerCandidates = chartWords.filter(
-    (w) => cy(w) < anchorY - 5 && cy(w) > anchorY - 130 && cx(w) > anchorX - 30,
+    (w) => cy(w) < anchorY - 5 && cy(w) > anchorY - 160 && cx(w) > anchorX - 30,
   );
 
   // 4. Build sector "columns": cluster header words by X, then assemble the
@@ -216,27 +317,218 @@ function extractVerticalTable(words, target) {
     console.error(`[debug] ${target.kind}: sectorColumns=${sectorColumns.length} ${sectorColumns.map((c) => `[${c.x.toFixed(0)}]"${c.label}"`).join(' ')}`);
   }
 
-  // 5. Match each value to the nearest sector column by X.
+  // Identify the S&P 500 aggregate column by header label, so we can drop
+  // values at that X without relying on value-tolerance matching (which
+  // fires false positives when a sector value happens to equal the index).
+  const aggregateColumnX = findAggregateColumnX(headerCandidates);
+  if (target._debug && aggregateColumnX != null) {
+    console.error(`[debug] ${target.kind}: aggregate column at x=${aggregateColumnX.toFixed(0)}`);
+  }
+
+  // 5. Match values to sectors. Two passes:
+  //    Pass 1: each value → nearest sector column by X (within 90px).
+  //    Pass 2: for values that didn't find a column, cross-reference with
+  //            narrative-extracted values (assign to a sector whose narrative
+  //            value uniquely matches this chart value within ±0.15).
+  //    Values at the S&P 500 column X are dropped (it's the index bar).
   const result = {};
-  for (const val of rowValues) {
+  const usedSectors = new Set();
+  const consumedIdx = new Set();
+  const aggregate = target._aggregate;
+  const isAggregateValue = (val, v) => {
+    // Prefer label-derived column position when we found one.
+    if (aggregateColumnX != null) return Math.abs(cx(val) - aggregateColumnX) < 70;
+    // Fallback: value-tolerance match when header didn't reveal the column.
+    return aggregate != null && Math.abs(v - aggregate) < AGGREGATE_TOLERANCE;
+  };
+
+  for (let i = 0; i < rowValues.length; i++) {
+    const val = rowValues[i];
+    const v = correctValue(numericValue(val.text), target.valueBound);
+    if (v == null) continue;
+    if (isAggregateValue(val, v)) {
+      consumedIdx.add(i);
+      continue;
+    }
+    // Tesseract emits conf=0 when it found pixels but couldn't read them
+    // confidently (e.g. truncated "76%" → "7%" on Industrials revBeatPct).
+    // Don't trust these — fall through to the column-based recovery pass,
+    // which re-OCRs the cell at scale 8.
+    if ((val.confidence ?? 100) < 30) continue;
+
     let best = null;
     let bestDist = Infinity;
     for (const col of sectorColumns) {
       const d = Math.abs(col.x - cx(val));
-      if (d < bestDist) {
-        bestDist = d;
-        best = col;
-      }
+      if (d < bestDist) { bestDist = d; best = col; }
     }
     if (!best || bestDist > 90) continue;
-    const sector = normSector(best.label);
-    if (!sector) continue;
-    if (!(sector in result)) {
+    if (usedSectors.has(best.label)) continue;
+    result[best.label] = v;
+    usedSectors.add(best.label);
+    consumedIdx.add(i);
+  }
+
+  if (target._narrative) {
+    for (let i = 0; i < rowValues.length; i++) {
+      if (consumedIdx.has(i)) continue;
+      const val = rowValues[i];
       const v = correctValue(numericValue(val.text), target.valueBound);
-      if (v != null) result[sector] = v;
+      if (v == null) continue;
+      if (isAggregateValue(val, v)) continue;
+
+      const matches = Object.entries(target._narrative)
+        .filter(([s, nv]) => nv != null && !usedSectors.has(s) && Math.abs(nv - v) < 0.15);
+      if (matches.length === 1) {
+        result[matches[0][0]] = v;
+        usedSectors.add(matches[0][0]);
+        consumedIdx.add(i);
+      }
     }
   }
+
+  // Recovery pass — re-OCR garbled header columns at higher resolution.
+  // When the chart has all 12 bars but two sectors share OCR-illegible
+  // labels (e.g. Consumer Discretionary OCR'd as "Corer", Consumer Staples
+  // as "oa"), the value at that column lands in `consumedIdx=false` because
+  // no sectorColumn matches its X. Re-render the header strip above the
+  // value at higher scale; the recovered text feeds matchTextToSector().
+  if (recovery) {
+    const ay = Math.round(anchorY);
+    const headerYTop = ay - 160;
+    const headerYBot = ay - 5;
+    for (let i = 0; i < rowValues.length; i++) {
+      if (consumedIdx.has(i)) continue;
+      const val = rowValues[i];
+      const lowConf = (val.confidence ?? 100) < 30;
+      let v = correctValue(numericValue(val.text), target.valueBound);
+      if (v == null && !lowConf) continue;
+      if (v != null && isAggregateValue(val, v)) continue;
+
+      const valX = Math.round(cx(val));
+      const { text } = await recovery.ocrRegion(pageNum, valX - 110, valX + 110, headerYTop, headerYBot);
+      const sector = matchTextToSector(text, usedSectors);
+      if (sector) {
+        // If the scale-5 value was unreliable (low conf, e.g. "7%" for what's
+        // really 76%), re-OCR the value cell at the column X.
+        if (lowConf) {
+          const recovered = await recoverVerticalValue(recovery, pageNum, valX, anchorY, target);
+          if (recovered != null) v = recovered;
+        }
+        if (v == null) continue;
+        result[sector] = v;
+        usedSectors.add(sector);
+        consumedIdx.add(i);
+        if (target._debug) console.error(`[debug] recovered ${sector} from header text "${text}" at x=${valX.toFixed(0)} value=${v}${lowConf ? ' (re-OCR)' : ''}`);
+      }
+    }
+
+    // Recover values for sectors whose column was identified but whose
+    // current-row cell OCR'd as garbage (e.g. "ooo" for Consumer Disc
+    // netProfitMargin on page 22). Re-OCR the value cell.
+    for (const col of sectorColumns) {
+      if (usedSectors.has(col.label)) continue;
+      const v = await recoverVerticalValue(recovery, pageNum, col.x, anchorY, target);
+      if (v == null) continue;
+      // Column was identified by sector label, so we trust it — skip the
+      // aggregate filter (a sector value happening to equal the index value
+      // shouldn't drop the cell).
+      result[col.label] = v;
+      usedSectors.add(col.label);
+      if (target._debug) console.error(`[debug] recovered value ${v} for ${col.label} at x=${col.x.toFixed(0)}`);
+    }
+
+    // Gap-fill recovery — when both the header AND the value at a column
+    // OCR'd as garbage at scale 5 (e.g. Consumer Discretionary on page 20:
+    // header "oa", value missing). Detect missing X positions by analyzing
+    // bar spacing, then re-OCR header + value at the inferred X.
+    const knownX = [
+      ...rowValues.filter((_, i) => consumedIdx.has(i)).map(cx),
+      ...sectorColumns.map((c) => c.x),
+      ...(aggregateColumnX != null ? [aggregateColumnX] : []),
+    ].sort((a, b) => a - b);
+    const dedupX = [];
+    for (const x of knownX) {
+      if (!dedupX.length || x - dedupX[dedupX.length - 1] > 30) dedupX.push(x);
+    }
+    if (dedupX.length >= 3) {
+      const gaps = [];
+      for (let i = 1; i < dedupX.length; i++) gaps.push(dedupX[i] - dedupX[i - 1]);
+      const sortedGaps = [...gaps].sort((a, b) => a - b);
+      const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
+      for (let i = 1; i < dedupX.length; i++) {
+        const span = dedupX[i] - dedupX[i - 1];
+        if (span <= 1.5 * medianGap) continue;
+        // Insert missing positions at integer multiples of medianGap.
+        const count = Math.round(span / medianGap) - 1;
+        for (let k = 1; k <= count; k++) {
+          const missingX = Math.round(dedupX[i - 1] + (span * k) / (count + 1));
+          if (aggregateColumnX != null && Math.abs(missingX - aggregateColumnX) < 70) continue;
+          const { text: headerText } = await recovery.ocrRegion(
+            pageNum, missingX - 110, missingX + 110, ay - 160, ay - 5,
+          );
+          const sector = matchTextToSector(headerText, usedSectors);
+          if (!sector) {
+            if (target._debug) console.error(`[debug] gap-fill miss: x=${missingX.toFixed(0)} headerText="${headerText}"`);
+            continue;
+          }
+          const v = await recoverVerticalValue(recovery, pageNum, missingX, anchorY, target);
+          if (v == null) {
+            if (target._debug) console.error(`[debug] gap-fill ${sector} header ok but value null at x=${missingX.toFixed(0)}`);
+            continue;
+          }
+          result[sector] = v;
+          usedSectors.add(sector);
+          if (target._debug) console.error(`[debug] gap-fill ${sector} = ${v} at x=${missingX.toFixed(0)} headerText="${headerText}"`);
+        }
+      }
+    }
+  }
+
   return result;
+}
+
+// Recover a value cell at known column X for vertical-table charts. Used
+// when the column header was identified but the current-row cell OCR'd as
+// garbage (FactSet's white-on-bar percent labels can fail at scale 5).
+async function recoverVerticalValue(recovery, pageNum, colX5, anchorY5, target) {
+  const cx5 = Math.round(colX5);
+  const cy5 = Math.round(anchorY5);
+  const { text } = await recovery.ocrRegion(pageNum, cx5 - 70, cx5 + 70, cy5 - 25, cy5 + 25, { numeric: true });
+  return parseNumericFromText(text, target.valueBound);
+}
+
+// Locate the S&P 500 aggregate column's X by finding "S&P" / "500" in the
+// header band. The two words are stacked or adjacent — average their X.
+// Returns null if the chart didn't OCR the index label (rare).
+function findAggregateColumnX(headerWords) {
+  const sp = headerWords.filter((w) => /^S&?P$/i.test(stripPunct(w.text)));
+  const fh = headerWords.filter((w) => /^500$/.test(stripPunct(w.text)));
+  if (sp.length === 0 && fh.length === 0) return null;
+  const all = [...sp, ...fh];
+  return all.reduce((s, w) => s + cx(w), 0) / all.length;
+}
+
+// Match a recovered header text snippet against SECTOR_TOKENS and return
+// the first sector whose pattern fits. Skips sectors already used. Used
+// during the recovery pass when the scale-5 OCR garbled a column header.
+function matchTextToSector(text, usedSectors) {
+  const tokens = text.split(/[^\w&]+/).filter(Boolean);
+  for (const { sector, alts } of SECTOR_TOKENS) {
+    if (usedSectors.has(sector)) continue;
+    for (const alt of alts) {
+      if (alt.length === 1) {
+        if (tokens.some((t) => alt[0].test(t))) return sector;
+      } else {
+        const i = tokens.findIndex((t) => alt[0].test(t));
+        if (i < 0) continue;
+        const j = tokens.findIndex((t, k) => k !== i && alt[1].test(t));
+        if (j < 0) continue;
+        return sector;
+      }
+    }
+  }
+  return null;
 }
 
 // Search the header words for known sector labels using token patterns.
@@ -407,16 +699,24 @@ function groupByY(words, tolerance = 12) {
   return rows;
 }
 
-// Try to assemble a sector name from the leftmost 1–4 words of a row.
+// Try to identify the sector for a horizontal-bar row from its leftmost words.
+// Uses the same SECTOR_TOKENS alts as the vertical-table header parser, so
+// labels OCR'd as "Cons." / "Tech" / garbled glyphs still resolve to a sector.
+// A two-token alt requires both tokens within the leftmost 4 words.
 function matchLeftSectorLabel(rowSorted) {
-  for (let n = Math.min(4, rowSorted.length); n >= 1; n--) {
-    const candidate = rowSorted
-      .slice(0, n)
-      .map((w) => w.text.replace(/[|()[\]]/g, '').trim())
-      .filter(Boolean)
-      .join(' ');
-    const sector = normSector(candidate);
-    if (sector) return sector;
+  const tokens = rowSorted.slice(0, 4).map((w) => stripPunct(w.text));
+  for (const { sector, alts } of SECTOR_TOKENS) {
+    for (const alt of alts) {
+      if (alt.length === 1) {
+        if (tokens.some((t) => alt[0].test(t))) return sector;
+      } else {
+        const i = tokens.findIndex((t) => alt[0].test(t));
+        if (i < 0) continue;
+        const j = tokens.findIndex((t, k) => k !== i && alt[1].test(t));
+        if (j < 0) continue;
+        return sector;
+      }
+    }
   }
   return null;
 }
@@ -440,7 +740,10 @@ function flattenWords(data) {
       for (const line of para.lines ?? []) {
         for (const w of line.words ?? []) {
           if (!w.text || !w.text.trim()) continue;
-          out.push(w);
+          // Coerce common OCR letter→digit confusions in percent-shaped strings
+          // ("T.7%" → "7.7%"). Mutates only when the result is a clean numeric.
+          const text = coerceNumericPct(w.text);
+          out.push(text === w.text ? w : { ...w, text });
         }
       }
     }
@@ -450,7 +753,19 @@ function flattenWords(data) {
 
 // ---- top-level orchestrator ----------------------------------------------
 
-export async function extractSectorCharts(pdfPath, { verbose = false } = {}) {
+// Top-level entry point.
+//
+// Optional context for OCR recovery:
+//   `narrativeMatrix[kind][sector]` — values FactSet's prose attributes to a
+//     sector. Used as a fallback when the chart label OCR'd badly: a chart
+//     value matching exactly one narrative sector is assigned to that sector.
+//   `blendedAggregates[kind]` — index-level value (S&P 500) for this metric.
+//     Chart values within AGGREGATE_TOLERANCE of this are dropped (they're
+//     the aggregate bar, not a sector).
+export async function extractSectorCharts(
+  pdfPath,
+  { verbose = false, narrativeMatrix = null, blendedAggregates = null } = {},
+) {
   const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const data = new Uint8Array(fs.readFileSync(pdfPath));
   const doc = await pdfjsLib.getDocument({ data, useSystemFonts: true }).promise;
@@ -472,6 +787,83 @@ export async function extractSectorCharts(pdfPath, { verbose = false } = {}) {
     return words;
   };
 
+  // High-resolution render cache for region-OCR recovery. Pages are rendered
+  // at scale 8 (~576 DPI) on demand and reused across all recovery calls
+  // for that page. ~30MP per channel — heavier than the scale-5 render but
+  // necessary to resolve the 1–2 glyph values on small bars.
+  const hiResCache = new Map();
+  const renderHighRes = async (pageNum, scale = 8) => {
+    const key = `${pageNum}:${scale}`;
+    if (hiResCache.has(key)) return hiResCache.get(key);
+    const page = await doc.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+    const canvas = createCanvas(viewport.width, viewport.height);
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const entry = { canvas, scaleFactor: scale / 5 };
+    hiResCache.set(key, entry);
+    return entry;
+  };
+
+  // OCR a sub-region given in scale-5 coordinates. We try multiple PSM modes
+  // and pick the highest-confidence non-empty result — region OCR fragments
+  // are short (a single value cell or stacked-pair header), and PSM mode
+  // matters: SPARSE_TEXT often returns empty on tight crops where SINGLE_LINE
+  // succeeds, and vice versa for multi-token headers.
+  const recoveryPsmModes = [PSM.SINGLE_LINE, PSM.SPARSE_TEXT, PSM.SINGLE_WORD];
+  const ocrRegion = async (pageNum, x5Min, x5Max, y5Min, y5Max, opts = {}) => {
+    const { scale = 8, numeric = false } = opts;
+    const { canvas, scaleFactor } = await renderHighRes(pageNum, scale);
+    const xMin = Math.max(0, x5Min * scaleFactor);
+    const yMin = Math.max(0, y5Min * scaleFactor);
+    const w = Math.round((x5Max - x5Min) * scaleFactor);
+    const h = Math.round((y5Max - y5Min) * scaleFactor);
+    if (w <= 0 || h <= 0) return { text: '', confidence: 0 };
+    const crop = createCanvas(w, h);
+    crop.getContext('2d').drawImage(canvas, xMin, yMin, w, h, 0, 0, w, h);
+    const png = crop.toBuffer('image/png');
+    // Numeric crops (value cells): restrict tesseract to digits/./%/- so it
+    // doesn't decode small bars as "BB"/"REED" letter shapes. Headers leave
+    // the whitelist empty so multi-word sector names parse normally.
+    //
+    // We use a fresh per-call worker for region OCR. The shared `worker` used
+    // for full-page passes carries persistent internal state that, when we
+    // toggle PSM/whitelist mid-session, sometimes returns empty/garbled text
+    // for tight crops the standalone probe reads cleanly. Spinning a fresh
+    // worker per region matches the probe's behavior and is fast for small
+    // (<1MB) crops.
+    let best = { text: '', confidence: 0 };
+    const passes = numeric
+      ? [
+          { whitelist: '0123456789.%-', modes: recoveryPsmModes },
+          { whitelist: '', modes: recoveryPsmModes },
+        ]
+      : [{ whitelist: '', modes: recoveryPsmModes }];
+    for (const { whitelist, modes } of passes) {
+      for (const mode of modes) {
+        const w = await createWorker('eng');
+        await w.setParameters({
+          tessedit_pageseg_mode: mode,
+          tessedit_char_whitelist: whitelist,
+        });
+        const { data: ocr } = await w.recognize(png);
+        await w.terminate();
+        const text = (ocr.text ?? '').replace(/\s+/g, ' ').trim();
+        const conf = ocr.confidence ?? 0;
+        if (process.env.OCR_REGION_DEBUG) console.error(`  ocrRegion PSM=${mode} wl=${whitelist ? 'num' : 'none'} conf=${conf} text="${text}"`);
+        // For numeric crops, only accept text that contains a digit — letters
+        // alone (from no-whitelist passes) are noise.
+        if (numeric && !/\d/.test(text)) continue;
+        if (text && (best.text === '' || conf > best.confidence)) {
+          best = { text, confidence: conf };
+        }
+      }
+    }
+    return best;
+  };
+
+  const recovery = { ocrRegion, renderHighRes };
+
   const result = {};
   for (const t of CHART_TARGETS) {
     const handler =
@@ -479,6 +871,13 @@ export async function extractSectorCharts(pdfPath, { verbose = false } = {}) {
       t.layout === 'verticalTable' ? extractVerticalTable :
       null;
     if (!handler) continue;
+
+    const enriched = {
+      ...t,
+      _debug: verbose,
+      _narrative: narrativeMatrix?.[t.kind] ?? null,
+      _aggregate: blendedAggregates?.[t.kind] ?? null,
+    };
 
     const [first, last] = t.pageRange;
     let foundPage = null;
@@ -489,7 +888,7 @@ export async function extractSectorCharts(pdfPath, { verbose = false } = {}) {
       // Quick title check: a chart with this title must be on this page.
       const titleY = findTitleY(words, t.titleKeywords);
       if (titleY == null) continue;
-      const values = handler(words, { ...t, _debug: verbose });
+      const values = await handler(words, enriched, recovery, p);
       if (Object.keys(values).length > 0) {
         foundPage = p;
         foundValues = values;

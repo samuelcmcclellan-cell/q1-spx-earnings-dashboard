@@ -811,13 +811,40 @@ export async function parseFactsetPdf(pdfPath) {
   const sectorRevSurp = extractSectorRevSurprise(pages);
   const sectorEpsBeat = extractSectorEpsBeatPct(pages);
   const sectorRevBeat = extractSectorRevBeatPct(pages);
+  const npmAggregate = extractNetProfitMargin(pages);
 
   // Chart extraction (OCR of bar-chart pages 17/20/22) fills sector cells the
   // narrative leaves blank. FactSet's prose only spotlights 5–6 sectors per
   // metric; the bar charts publish all 11.
+  //
+  // Pass narrative-extracted values + index aggregates into the OCR pipeline
+  // so it can recover from garbled chart labels: a chart bar whose value
+  // matches exactly one narrative sector gets assigned to that sector even
+  // when its column header OCR'd as gibberish, and bars matching the S&P 500
+  // aggregate (e.g. blended +13.4% margin) are dropped instead of being
+  // confused for a sector.
+  const narrativeMatrix = {
+    epsBeatPct: sectorEpsBeat,
+    revBeatPct: sectorRevBeat,
+    epsSurprise: sectorEpsSurp,
+    revSurprise: sectorRevSurp,
+    earningsGrowth: sectorEarn,
+    revenueGrowth: sectorRev,
+    netProfitMargin: Object.fromEntries(SECTORS.map((s) => [s, sectorMargins[s]?.current ?? null])),
+  };
+  const blendedAggregates = {
+    epsBeatPct: scorecard.epsBeat.current,
+    revBeatPct: scorecard.revenueBeat.current,
+    epsSurprise: scorecard.epsSurprise.current,
+    revSurprise: scorecard.revenueSurprise.current,
+    earningsGrowth: keyMetrics.blendedEarningsGrowth,
+    revenueGrowth: keyMetrics.blendedRevenueGrowth,
+    netProfitMargin: npmAggregate.current,
+  };
+
   let sectorCharts = {};
   try {
-    sectorCharts = await extractSectorCharts(pdfPath);
+    sectorCharts = await extractSectorCharts(pdfPath, { narrativeMatrix, blendedAggregates });
   } catch (e) {
     console.error('[parseFactsetPdf] chart extraction failed (continuing without charts):', e.message);
   }
@@ -837,6 +864,8 @@ export async function parseFactsetPdf(pdfPath) {
   const sectorMatrix = [];
   const sectorMatrixSource = {};
   for (const sector of SECTORS) {
+    const epsBeat = pickWithSource(sectorEpsBeat[sector], 'narrative', 'epsBeatPct', sector);
+    const revBeat = pickWithSource(sectorRevBeat[sector], 'narrative', 'revBeatPct', sector);
     const eps = pickWithSource(sectorEpsSurp[sector], 'narrative', 'epsSurprise', sector);
     const rev = pickWithSource(sectorRevSurp[sector], 'narrative', 'revSurprise', sector);
     const earn = pickWithSource(sectorEarn[sector], 'narrative', 'earningsGrowth', sector);
@@ -844,8 +873,8 @@ export async function parseFactsetPdf(pdfPath) {
     const npm = pickWithSource(sectorMargins[sector]?.current ?? null, 'narrative', 'netProfitMargin', sector);
     sectorMatrix.push({
       sector,
-      epsBeatPct: sectorEpsBeat[sector],
-      revBeatPct: sectorRevBeat[sector],
+      epsBeatPct: epsBeat.value,
+      revBeatPct: revBeat.value,
       epsSurprise: eps.value,
       revSurprise: rev.value,
       earningsGrowth: earn.value,
@@ -855,8 +884,8 @@ export async function parseFactsetPdf(pdfPath) {
       netProfitMarginYearAgo: sectorMargins[sector]?.yearAgo ?? null,
     });
     sectorMatrixSource[sector] = {
-      epsBeatPct: sectorEpsBeat[sector] != null ? 'narrative' : null,
-      revBeatPct: sectorRevBeat[sector] != null ? 'narrative' : null,
+      epsBeatPct: epsBeat.source,
+      revBeatPct: revBeat.source,
       epsSurprise: eps.source,
       revSurprise: rev.source,
       earningsGrowth: earn.source,
@@ -880,7 +909,7 @@ export async function parseFactsetPdf(pdfPath) {
     valuation: extractValuation(pages),
     targets: extractTargets(pages),
     ratings: extractRatings(pages),
-    netProfitMargin: extractNetProfitMargin(pages),
+    netProfitMargin: npmAggregate,
     nextWeek: extractNextWeek(pages),
   };
 }

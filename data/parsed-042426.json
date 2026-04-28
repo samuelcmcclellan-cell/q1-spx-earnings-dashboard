@@ -3,7 +3,7 @@
     "asOfDate": "April 24, 2026",
     "quarter": "Q1 2026",
     "sourcePdf": "EarningsInsight_042426.pdf",
-    "parsedAt": "2026-04-28T05:26:13.541Z",
+    "parsedAt": "2026-04-28T16:29:23.344Z",
     "pageCount": 36
   },
   "keyMetrics": {
@@ -47,10 +47,10 @@
   "sectorMatrix": [
     {
       "sector": "Communication Services",
-      "epsBeatPct": null,
+      "epsBeatPct": 75,
       "revBeatPct": 100,
       "epsSurprise": 20.6,
-      "revSurprise": null,
+      "revSurprise": 1.6,
       "earningsGrowth": -0.2,
       "revenueGrowth": 13.2,
       "netProfitMargin": 14.1,
@@ -61,22 +61,22 @@
       "sector": "Consumer Discretionary",
       "epsBeatPct": 69,
       "revBeatPct": 69,
-      "epsSurprise": null,
+      "epsSurprise": 7.7,
       "revSurprise": 0.4,
       "earningsGrowth": 2.4,
-      "revenueGrowth": null,
-      "netProfitMargin": null,
+      "revenueGrowth": 8.3,
+      "netProfitMargin": 8.2,
       "netProfitMargin5yr": null,
       "netProfitMarginYearAgo": null
     },
     {
       "sector": "Consumer Staples",
-      "epsBeatPct": null,
+      "epsBeatPct": 78,
       "revBeatPct": 100,
       "epsSurprise": 3,
-      "revSurprise": null,
+      "revSurprise": 1.5,
       "earningsGrowth": 2.7,
-      "revenueGrowth": null,
+      "revenueGrowth": 7.1,
       "netProfitMargin": 5.9,
       "netProfitMargin5yr": null,
       "netProfitMarginYearAgo": null
@@ -95,10 +95,10 @@
     },
     {
       "sector": "Financials",
-      "epsBeatPct": null,
-      "revBeatPct": null,
+      "epsBeatPct": 85,
+      "revBeatPct": 70,
       "epsSurprise": 6.7,
-      "revSurprise": null,
+      "revSurprise": 1.2,
       "earningsGrowth": 19.8,
       "revenueGrowth": 10.8,
       "netProfitMargin": 20.2,
@@ -108,9 +108,9 @@
     {
       "sector": "Health Care",
       "epsBeatPct": 100,
-      "revBeatPct": null,
+      "revBeatPct": 92,
       "epsSurprise": 5.7,
-      "revSurprise": null,
+      "revSurprise": 1.9,
       "earningsGrowth": -8.7,
       "revenueGrowth": 6.2,
       "netProfitMargin": 7.5,
@@ -119,10 +119,10 @@
     },
     {
       "sector": "Industrials",
-      "epsBeatPct": null,
-      "revBeatPct": null,
+      "epsBeatPct": 76,
+      "revBeatPct": 76,
       "epsSurprise": 33.2,
-      "revSurprise": null,
+      "revSurprise": 2,
       "earningsGrowth": 16.7,
       "revenueGrowth": 6.9,
       "netProfitMargin": 11.1,
@@ -132,9 +132,9 @@
     {
       "sector": "Information Technology",
       "epsBeatPct": 93,
-      "revBeatPct": null,
+      "revBeatPct": 93,
       "epsSurprise": 21.1,
-      "revSurprise": null,
+      "revSurprise": 5.8,
       "earningsGrowth": 46.3,
       "revenueGrowth": 28.1,
       "netProfitMargin": 29.1,
@@ -143,8 +143,8 @@
     },
     {
       "sector": "Materials",
-      "epsBeatPct": null,
-      "revBeatPct": null,
+      "epsBeatPct": 83,
+      "revBeatPct": 83,
       "epsSurprise": 28.5,
       "revSurprise": 4.4,
       "earningsGrowth": 33.1,
@@ -170,7 +170,7 @@
       "epsBeatPct": 100,
       "revBeatPct": 67,
       "epsSurprise": 5.8,
-      "revSurprise": null,
+      "revSurprise": 1.1,
       "earningsGrowth": 11.9,
       "revenueGrowth": 8.2,
       "netProfitMargin": 15.1,
@@ -180,10 +180,10 @@
   ],
   "sectorMatrixSource": {
     "Communication Services": {
-      "epsBeatPct": null,
+      "epsBeatPct": "chart-p16",
       "revBeatPct": "narrative",
       "epsSurprise": "narrative",
-      "revSurprise": null,
+      "revSurprise": "chart-p17",
       "earningsGrowth": "narrative",
       "revenueGrowth": "narrative",
       "netProfitMargin": "narrative"
@@ -191,19 +191,19 @@
     "Consumer Discretionary": {
       "epsBeatPct": "narrative",
       "revBeatPct": "narrative",
-      "epsSurprise": null,
+      "epsSurprise": "chart-p17",
       "revSurprise": "narrative",
       "earningsGrowth": "chart-p20",
-      "revenueGrowth": null,
-      "netProfitMargin": null
+      "revenueGrowth": "chart-p20",
+      "netProfitMargin": "chart-p22"
     },
     "Consumer Staples": {
-      "epsBeatPct": null,
+      "epsBeatPct": "chart-p16",
       "revBeatPct": "narrative",
       "epsSurprise": "chart-p17",
-      "revSurprise": null,
+      "revSurprise": "chart-p17",
       "earningsGrowth": "chart-p20",
-      "revenueGrowth": null,
+      "revenueGrowth": "chart-p20",
       "netProfitMargin": "chart-p22"
     },
     "Energy": {
@@ -216,44 +216,44 @@
       "netProfitMargin": "narrative"
     },
     "Financials": {
-      "epsBeatPct": null,
-      "revBeatPct": null,
+      "epsBeatPct": "chart-p16",
+      "revBeatPct": "chart-p16",
       "epsSurprise": "chart-p17",
-      "revSurprise": null,
+      "revSurprise": "chart-p17",
       "earningsGrowth": "narrative",
       "revenueGrowth": "narrative",
       "netProfitMargin": "chart-p22"
     },
     "Health Care": {
       "epsBeatPct": "narrative",
-      "revBeatPct": null,
+      "revBeatPct": "chart-p16",
       "epsSurprise": "chart-p17",
-      "revSurprise": null,
+      "revSurprise": "chart-p17",
       "earningsGrowth": "narrative",
       "revenueGrowth": "narrative",
       "netProfitMargin": "chart-p22"
     },
     "Industrials": {
-      "epsBeatPct": null,
-      "revBeatPct": null,
+      "epsBeatPct": "chart-p16",
+      "revBeatPct": "chart-p16",
       "epsSurprise": "narrative",
-      "revSurprise": null,
+      "revSurprise": "chart-p17",
       "earningsGrowth": "narrative",
       "revenueGrowth": "narrative",
       "netProfitMargin": "chart-p22"
     },
     "Information Technology": {
       "epsBeatPct": "narrative",
-      "revBeatPct": null,
+      "revBeatPct": "chart-p16",
       "epsSurprise": "narrative",
-      "revSurprise": null,
+      "revSurprise": "chart-p17",
       "earningsGrowth": "narrative",
       "revenueGrowth": "narrative",
       "netProfitMargin": "narrative"
     },
     "Materials": {
-      "epsBeatPct": null,
-      "revBeatPct": null,
+      "epsBeatPct": "chart-p16",
+      "revBeatPct": "chart-p16",
       "epsSurprise": "narrative",
       "revSurprise": "narrative",
       "earningsGrowth": "narrative",
@@ -273,7 +273,7 @@
       "epsBeatPct": "narrative",
       "revBeatPct": "narrative",
       "epsSurprise": "chart-p17",
-      "revSurprise": null,
+      "revSurprise": "chart-p17",
       "earningsGrowth": "chart-p20",
       "revenueGrowth": "chart-p20",
       "netProfitMargin": "chart-p22"
