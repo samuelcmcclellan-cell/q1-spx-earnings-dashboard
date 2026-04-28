@@ -20,7 +20,7 @@ const COLUMNS = [
 ];
 
 export default function SectorsPage() {
-  const { sectorMatrix, sectorIndustries } = dashboardData;
+  const { sectorMatrix, sectorIndustries, sectorMatrixSource } = dashboardData;
 
   // For each column, compute max-abs across the column for bar scaling
   const maxAbs = {};
@@ -39,10 +39,22 @@ export default function SectorsPage() {
         </div>
         <h1 className="mt-2 text-3xl font-bold tracking-tight">All 11 GICS sectors</h1>
         <p className="mt-3 text-[var(--text-muted)] max-w-3xl">
-          Every sector FactSet itemized this week is shown — including ones with sparse data. Empty cells (—) mean
-          FactSet did not publish that figure for that sector. Bars in each column are scaled to the largest absolute
-          value in the column so they're comparable across rows.
+          Every sector FactSet itemized this week is shown — including ones with sparse data.
+          Bars in each column are scaled to the largest absolute value in the column so they're comparable across rows.
         </p>
+        <ul className="mt-3 text-sm text-[var(--text-muted)] max-w-3xl space-y-1 list-disc pl-5">
+          <li>
+            <span className="font-medium text-[var(--text)]">Empty cells (—)</span> mean the value
+            wasn't published in this week's FactSet PDF — FactSet's narrative
+            spotlights only 5–6 sectors per metric, and a few small bar charts
+            don't OCR cleanly enough to extract.
+          </li>
+          <li>
+            <span className="font-medium text-[var(--text)]">Cells marked with <span className="font-mono text-[var(--accent)]">▣</span></span>{' '}
+            were extracted from the all-11-sector bar charts on pages 17/20/22
+            (OCR). Unmarked cells came from the narrative text on pages 1–11.
+          </li>
+        </ul>
       </section>
 
       <section>
@@ -72,11 +84,25 @@ export default function SectorsPage() {
                   className={i % 2 === 0 ? 'bg-transparent' : 'bg-[var(--surface-2)]/40'}
                 >
                   <td className="px-4 py-3 font-medium sticky left-0 bg-inherit">{row.sector}</td>
-                  {COLUMNS.map((c) => (
-                    <td key={c.key} className="px-4 py-3 tnum">
-                      <Bar value={row[c.key]} max={maxAbs[c.key]} suffix={c.suffix} width={120} />
-                    </td>
-                  ))}
+                  {COLUMNS.map((c) => {
+                    const src = sectorMatrixSource?.[row.sector]?.[c.key];
+                    const isChart = typeof src === 'string' && src.startsWith('chart-');
+                    return (
+                      <td key={c.key} className="px-4 py-3 tnum">
+                        <div className="flex items-center gap-1.5">
+                          <Bar value={row[c.key]} max={maxAbs[c.key]} suffix={c.suffix} width={120} />
+                          {isChart && (
+                            <span
+                              className="text-[var(--accent)] font-mono text-xs leading-none"
+                              title={`Extracted from ${src.replace('chart-p', 'page ')} chart (OCR)`}
+                            >
+                              ▣
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

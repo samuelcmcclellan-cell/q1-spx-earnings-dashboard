@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "exceljs": "^4.4.0",
-    "pdf-parse": "^2.1.7"
+    "pdf-parse": "^2.1.7",
+    "tesseract.js": "^7.0.0"
   }
 }

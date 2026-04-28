@@ -167,6 +167,9 @@ function buildSectorMatrix(wb, data) {
   styleHeaderRow(headerRow);
 
   const firstDataRow = sheet.lastRow.number + 1;
+  // Map metric column letter -> sectorMatrixSource key (so we can footnote
+  // chart-sourced cells with a small marker).
+  const colSrcKey = { D: 'epsSurprise', E: 'revSurprise', F: 'earningsGrowth', G: 'revenueGrowth', H: 'netProfitMargin' };
   for (const s of data.sectorMatrix) {
     const row = sheet.addRow([
       s.sector,
@@ -181,6 +184,17 @@ function buildSectorMatrix(wb, data) {
       v(s.netProfitMarginYearAgo),
     ]);
     styleDataRow(row);
+    // Mark chart-sourced cells with a light italic note in the cell comment.
+    const sourceMap = data.sectorMatrixSource?.[s.sector] ?? {};
+    for (const [col, key] of Object.entries(colSrcKey)) {
+      const src = sourceMap[key];
+      if (typeof src === 'string' && src.startsWith('chart-')) {
+        const cell = row.getCell(col);
+        const pageNum = src.replace('chart-p', '');
+        cell.note = { texts: [{ text: `Extracted via OCR from chart on page ${pageNum}` }] };
+        cell.font = { ...(cell.font || {}), italic: true };
+      }
+    }
   }
   const lastDataRow = sheet.lastRow.number;
 
@@ -193,6 +207,19 @@ function buildSectorMatrix(wb, data) {
     from: { row: firstDataRow - 1, column: 1 },
     to: { row: lastDataRow, column: 10 },
   };
+
+  // Footnote rows explaining what the cells mean.
+  sheet.addRow([]);
+  const note1 = sheet.addRow([
+    "— means the value isn't published in this week's FactSet PDF. FactSet's narrative spotlights only 5–6 sectors per metric.",
+  ]);
+  sheet.mergeCells(`A${note1.number}:J${note1.number}`);
+  note1.getCell('A').font = { italic: true, color: { argb: 'FF666666' }, size: 10 };
+  const note2 = sheet.addRow([
+    'Italicized cells (with hover note) were extracted via OCR from the all-11-sector bar charts on pages 17/20/22.',
+  ]);
+  sheet.mergeCells(`A${note2.number}:J${note2.number}`);
+  note2.getCell('A').font = { italic: true, color: { argb: 'FF666666' }, size: 10 };
 }
 
 function buildSectorDetail(wb, data) {

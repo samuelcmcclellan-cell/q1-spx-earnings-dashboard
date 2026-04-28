@@ -13,6 +13,7 @@
 import { readFileSync } from 'fs';
 import { basename } from 'path';
 import { createRequire } from 'module';
+import { extractSectorCharts } from './extract-charts.mjs';
 const require = createRequire(import.meta.url);
 const { PDFParse } = require('pdf-parse');
 
@@ -65,6 +66,26 @@ const sliceSection = (text, startRe, endRes = []) => {
     if (i > 0 && i < end) end = i;
   }
   return tail.slice(0, end);
+};
+
+// Find every full sentence in `text` whose body contains `triggerRe`.
+// A "sentence" is delimited by periods. Used to capture sector callouts
+// like "the Energy (100%), Health Care (100%), ... sectors have the highest
+// percentages..." where the sector list appears BEFORE the trigger phrase.
+const findSentencesContaining = (text, triggerRe) => {
+  const flags = triggerRe.flags.includes('g') ? triggerRe.flags : triggerRe.flags + 'g';
+  const re = new RegExp(triggerRe.source, flags);
+  const out = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    let start = m.index;
+    while (start > 0 && text[start - 1] !== '.') start--;
+    let end = m.index + m[0].length;
+    while (end < text.length && text[end] !== '.') end++;
+    out.push(text.slice(start, end + 1));
+    if (m[0].length === 0) re.lastIndex++;
+  }
+  return out;
 };
 
 // ---- extractors -----------------------------------------------------------
@@ -296,73 +317,44 @@ function extractSectorRevSurprise(pages) {
   const result = {};
   for (const sector of SECTORS) {
     const escaped = sector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Pattern: "Information Technology (+5.8%) and Materials (+4.4%) sectors are reporting the largest positive (aggregate) differences between actual revenues and estimated revenues"
-    const re = new RegExp(`${escaped}\\s+\\(([+\\-]?\\d+(?:\\.\\d+)?)%\\)[^.]*?actual\\s+revenues\\s+and\\s+estimated\\s+revenues`, 'i');
+    // FactSet uses two phrasings:
+    //   "Information Technology (+5.8%) ... largest positive ... actual revenues"
+    //   "Consumer Discretionary sector (+0.4%) ... smallest positive ... actual revenues"
+    // The second has an extra "sector" word between the name and the percentage.
+    const re = new RegExp(`${escaped}(?:\\s+sector)?\\s+\\(([+\\-]?\\d+(?:\\.\\d+)?)%\\)[^.]*?actual\\s+revenues\\s+and\\s+estimated\\s+revenues`, 'i');
     const m = all.match(re);
     result[sector] = m ? num(m[1]) : null;
   }
   return result;
 }
 
-// % of companies in each sector beating EPS
-function extractSectorEpsBeatPct(pages) {
+// % of companies in each sector beating EPS / revenue.
+// FactSet's text combines the highest- and lowest-performing sectors in one
+// run-on sentence ("Energy (100%), Health Care (100%), ... sectors have the
+// highest percentages ..., while the Consumer Discretionary (69%) sector has
+// the lowest percentage ..."). Earlier list items can be 250+ chars before
+// the trigger, so we extract the entire surrounding sentence(s) — with
+// findSentencesContaining — and scan that combined text for each sector.
+function extractSectorBeatPct(pages, metric /* 'earnings' | 'revenues' */) {
   const all = pages.map((p) => p.text).join('\n');
+  const triggerRe = new RegExp(
+    `sectors?\\s+ha(?:s|ve)\\s+the\\s+(highest|lowest)\\s+percentages?\\s+of\\s+companies\\s+reporting\\s+${metric}\\s+above\\s+estimates`,
+    'i',
+  );
+  const sentences = findSentencesContaining(all, triggerRe);
+  const block = sentences.join(' ');
   const result = {};
-  // Block: "the Energy (100%), Health Care (100%), Real Estate (100%), Utilities (100%), and Information Technology (93%) sectors have the highest percentages of companies reporting earnings above estimates"
-  // Plus: "Consumer Discretionary (69%) sector has the lowest percentage of companies reporting earnings above estimates"
   for (const sector of SECTORS) {
     const escaped = sector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // Look near "earnings above estimates" sentence
-    const block = all.match(/sectors?\s+have\s+the\s+highest\s+percentages?\s+of\s+companies\s+reporting\s+earnings\s+above\s+estimates[\s\S]*?(?=\n\s*\n|Earnings\s+Surprise)/i);
-    const lowest = all.match(/sector\s+has\s+the\s+lowest\s+percentage\s+of\s+companies\s+reporting\s+earnings\s+above\s+estimates/i);
-    let value = null;
-    if (block) {
-      const re = new RegExp(`${escaped}\\s+\\((\\d+)%\\)`, 'i');
-      const m = block[0].match(re);
-      if (m) value = num(m[1]);
-    }
-    if (value === null) {
-      // Check the lowest sentence + context (50 chars before)
-      const idx = all.search(/sector\s+has\s+the\s+lowest\s+percentage\s+of\s+companies\s+reporting\s+earnings\s+above\s+estimates/i);
-      if (idx > 0) {
-        const around = all.slice(Math.max(0, idx - 200), idx + 100);
-        const re = new RegExp(`${escaped}\\s+\\((\\d+)%\\)`, 'i');
-        const m = around.match(re);
-        if (m) value = num(m[1]);
-      }
-    }
-    result[sector] = value;
+    const re = new RegExp(`${escaped}\\s+\\((\\d+)%\\)`, 'i');
+    const m = block.match(re);
+    result[sector] = m ? num(m[1]) : null;
   }
   return result;
 }
 
-function extractSectorRevBeatPct(pages) {
-  const all = pages.map((p) => p.text).join('\n');
-  const result = {};
-  for (const sector of SECTORS) {
-    const escaped = sector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // "Communication Services (100%), Consumer Staples (100%), Energy (100%), and Real Estate (100%) sectors have the highest percentages of companies reporting revenues above estimates"
-    const block = all.match(/sectors?\s+have\s+the\s+highest\s+percentages?\s+of\s+companies\s+reporting\s+revenues\s+above\s+estimates[\s\S]*?(?=\n\s*\n|Revenue\s+Surprise)/i);
-    const lowest = all.match(/sectors?\s+have\s+the\s+lowest\s+percentages?\s+of\s+companies\s+reporting\s+revenues\s+above\s+estimates/i);
-    let value = null;
-    if (block) {
-      const re = new RegExp(`${escaped}\\s+\\((\\d+)%\\)`, 'i');
-      const m = block[0].match(re);
-      if (m) value = num(m[1]);
-    }
-    if (value === null) {
-      const idx = all.search(/sectors?\s+have\s+the\s+lowest\s+percentages?\s+of\s+companies\s+reporting\s+revenues\s+above\s+estimates/i);
-      if (idx > 0) {
-        const around = all.slice(Math.max(0, idx - 250), idx + 100);
-        const re = new RegExp(`${escaped}\\s+\\((\\d+)%\\)`, 'i');
-        const m = around.match(re);
-        if (m) value = num(m[1]);
-      }
-    }
-    result[sector] = value;
-  }
-  return result;
-}
+const extractSectorEpsBeatPct = (pages) => extractSectorBeatPct(pages, 'earnings');
+const extractSectorRevBeatPct = (pages) => extractSectorBeatPct(pages, 'revenues');
 
 function extractMarketReaction(pages) {
   const all = pages.map((p) => p.text).join('\n');
@@ -820,24 +812,65 @@ export async function parseFactsetPdf(pdfPath) {
   const sectorEpsBeat = extractSectorEpsBeatPct(pages);
   const sectorRevBeat = extractSectorRevBeatPct(pages);
 
-  const sectorMatrix = SECTORS.map((sector) => ({
-    sector,
-    epsBeatPct: sectorEpsBeat[sector],
-    revBeatPct: sectorRevBeat[sector],
-    epsSurprise: sectorEpsSurp[sector],
-    revSurprise: sectorRevSurp[sector],
-    earningsGrowth: sectorEarn[sector],
-    revenueGrowth: sectorRev[sector],
-    netProfitMargin: sectorMargins[sector]?.current ?? null,
-    netProfitMargin5yr: sectorMargins[sector]?.avg5yr ?? null,
-    netProfitMarginYearAgo: sectorMargins[sector]?.yearAgo ?? null,
-  }));
+  // Chart extraction (OCR of bar-chart pages 17/20/22) fills sector cells the
+  // narrative leaves blank. FactSet's prose only spotlights 5–6 sectors per
+  // metric; the bar charts publish all 11.
+  let sectorCharts = {};
+  try {
+    sectorCharts = await extractSectorCharts(pdfPath);
+  } catch (e) {
+    console.error('[parseFactsetPdf] chart extraction failed (continuing without charts):', e.message);
+  }
+
+  // Merge: prefer narrative value (more precise wording, fewer OCR risks); fall
+  // back to chart value where narrative left null. Track source per cell so the
+  // workbook + site can cite "narrative-pX" vs "chart-pX".
+  const chartVal = (kind, sector) => sectorCharts[kind]?.values?.[sector] ?? null;
+  const chartPage = (kind) => sectorCharts[kind]?.page ?? null;
+  const pickWithSource = (narrativeVal, narrativeSrc, chartKind, sector) => {
+    if (narrativeVal != null) return { value: narrativeVal, source: narrativeSrc };
+    const cv = chartVal(chartKind, sector);
+    if (cv != null) return { value: cv, source: `chart-p${chartPage(chartKind)}` };
+    return { value: null, source: null };
+  };
+
+  const sectorMatrix = [];
+  const sectorMatrixSource = {};
+  for (const sector of SECTORS) {
+    const eps = pickWithSource(sectorEpsSurp[sector], 'narrative', 'epsSurprise', sector);
+    const rev = pickWithSource(sectorRevSurp[sector], 'narrative', 'revSurprise', sector);
+    const earn = pickWithSource(sectorEarn[sector], 'narrative', 'earningsGrowth', sector);
+    const revG = pickWithSource(sectorRev[sector], 'narrative', 'revenueGrowth', sector);
+    const npm = pickWithSource(sectorMargins[sector]?.current ?? null, 'narrative', 'netProfitMargin', sector);
+    sectorMatrix.push({
+      sector,
+      epsBeatPct: sectorEpsBeat[sector],
+      revBeatPct: sectorRevBeat[sector],
+      epsSurprise: eps.value,
+      revSurprise: rev.value,
+      earningsGrowth: earn.value,
+      revenueGrowth: revG.value,
+      netProfitMargin: npm.value,
+      netProfitMargin5yr: sectorMargins[sector]?.avg5yr ?? null,
+      netProfitMarginYearAgo: sectorMargins[sector]?.yearAgo ?? null,
+    });
+    sectorMatrixSource[sector] = {
+      epsBeatPct: sectorEpsBeat[sector] != null ? 'narrative' : null,
+      revBeatPct: sectorRevBeat[sector] != null ? 'narrative' : null,
+      epsSurprise: eps.source,
+      revSurprise: rev.source,
+      earningsGrowth: earn.source,
+      revenueGrowth: revG.source,
+      netProfitMargin: npm.source,
+    };
+  }
 
   return {
     meta,
     keyMetrics,
     scorecard,
     sectorMatrix,
+    sectorMatrixSource,
     sectorIndustries: extractSectorIndustries(pages),
     companyContributors: extractCompanyContributors(pages),
     marketReaction: extractMarketReaction(pages),

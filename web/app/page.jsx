@@ -136,9 +136,9 @@ export default function OverviewPage() {
           </div>
         </div>
         <p className="mt-3 text-xs text-[var(--text-muted)]">
-          Sectors not shown here had no itemized growth rate in this week's FactSet report. See{' '}
+          All-11-sector coverage is filled by OCR-extracting the bar charts on pages 17/20/22 — see{' '}
           <Link href="/sectors/" className="text-[var(--accent)] hover:underline">Sectors</Link>{' '}
-          for the full matrix.
+          for the full matrix and source legend (cells marked <span className="font-mono text-[var(--accent)]">▣</span> are chart-sourced).
         </p>
       </section>
 

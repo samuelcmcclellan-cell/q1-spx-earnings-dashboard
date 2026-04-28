@@ -30,3 +30,8 @@ Thumbs.db
 .claude/
 
 .vercel
+
+# OCR scratch
+tmp/
+eng.traineddata
+src/probe-*.mjs
